@@ -1,0 +1,21 @@
+plugins { id 'com.android.application' }
+
+def appVersionCode = (project.findProperty('appVersionCode') ?: '1').toInteger()
+def appVersionName = project.findProperty('appVersionName') ?: '1.0.1'
+
+android {
+    namespace 'com.dincer552.testpak2'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.dincer552.testpak2'
+        minSdk 23
+        targetSdk 35
+        versionCode appVersionCode
+        versionName appVersionName
+    }
+    buildTypes { release { minifyEnabled false } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
