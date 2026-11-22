@@ -1,7 +1,9 @@
-name: Build and centrally sign TestPak2
+name: Build, sign and publish Mini Zıpla
 
 on:
   push:
+    branches: ["main"]
+  pull_request:
     branches: ["main"]
   workflow_dispatch:
 
@@ -10,12 +12,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: testpak2-main
+  group: mini-zipla-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-sign-release:
-    name: Build, sign and publish Mini Zipla
+    name: Build, verify, sign and publish Mini Zıpla
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -41,7 +43,7 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build unsigned APK
+      - name: Build unsigned release APK
         shell: bash
         run: |
           set -euo pipefail
@@ -52,21 +54,27 @@ jobs:
             -PappVersionName="$APP_VERSION_NAME" \
             assembleRelease
           APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
-          test -n "$APK" && test -s "$APK"
+          test -n "$APK"
+          test -s "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | grep -F "package: name='com.dincer552.testpak2' versionCode='$APP_VERSION_CODE'"
           echo "UNSIGNED_APK=$APK" >> "$GITHUB_ENV"
           echo "APP_VERSION_CODE=$APP_VERSION_CODE" >> "$GITHUB_ENV"
           echo "APP_VERSION_NAME=$APP_VERSION_NAME" >> "$GITHUB_ENV"
 
-      - name: Check central signer
+      - name: Validate central signer
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --retry 5 --retry-all-errors \
-            "\${APK_SIGNING_SERVICE_URL%/}/health" -o "$RUNNER_TEMP/health.json"
-          grep -q '"ok":true' "$RUNNER_TEMP/health.json"
-          grep -q '"oidc":true' "$RUNNER_TEMP/health.json"
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 2 \
+            "${APK_SIGNING_SERVICE_URL%/}/health" -o "$RUNNER_TEMP/signer-health.json"
+          grep -q '"ok":true' "$RUNNER_TEMP/signer-health.json"
+          grep -q '"oidc":true' "$RUNNER_TEMP/signer-health.json"
 
-      - name: Obtain GitHub OIDC token
+      - name: Obtain short-lived GitHub OIDC token
         id: oidc
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
@@ -78,54 +86,65 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
-      - name: Bootstrap isolated signing key for this repo
+      - name: Create this repository's isolated signing key if needed
+        if: steps.oidc.outcome == 'success'
         env:
-          SIGNING_OIDC_TOKEN: \${{ steps.oidc.outputs.token }}
+          SIGNING_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         shell: bash
         run: |
           set -euo pipefail
           curl --fail-with-body --silent --show-error \
-            -X POST "\${APK_SIGNING_SERVICE_URL%/}/v1/bootstrap" \
+            -X POST "${APK_SIGNING_SERVICE_URL%/}/v1/bootstrap" \
             -H "Authorization: Bearer $SIGNING_OIDC_TOKEN" \
             -F "key_id=testpak2" \
             -F "package_name=com.dincer552.testpak2" \
-            -o "$RUNNER_TEMP/bootstrap.json"
-          cat "$RUNNER_TEMP/bootstrap.json"
+            -o "$RUNNER_TEMP/bootstrap-response.json"
+          grep -q '"ok":true' "$RUNNER_TEMP/bootstrap-response.json"
 
-      - name: Sign APK on central VM
+      - name: Sign APK with the central VM signer
+        if: steps.oidc.outcome == 'success'
         env:
-          SIGNING_OIDC_TOKEN: \${{ steps.oidc.outputs.token }}
+          SIGNING_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         shell: bash
         run: |
           set -euo pipefail
           curl --fail-with-body --silent --show-error \
-            -X POST "\${APK_SIGNING_SERVICE_URL%/}/v1/sign" \
+            -X POST "${APK_SIGNING_SERVICE_URL%/}/v1/sign" \
             -H "Authorization: Bearer $SIGNING_OIDC_TOKEN" \
             -F "key_id=testpak2" \
             -F "apk=@$UNSIGNED_APK;type=application/vnd.android.package-archive" \
             -o "$RUNNER_TEMP/testpak2-signed.apk"
           test -s "$RUNNER_TEMP/testpak2-signed.apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$RUNNER_TEMP/testpak2-signed.apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$RUNNER_TEMP/testpak2-signed.apk" | grep -F "package: name='com.dincer552.testpak2' versionCode='$APP_VERSION_CODE'"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -p 4 "$RUNNER_TEMP/testpak2-signed.apk"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$RUNNER_TEMP/testpak2-signed.apk")"
+          echo "$BADGING" | grep -F "package: name='com.dincer552.testpak2' versionCode='$APP_VERSION_CODE'"
           mkdir -p release
           cp "$RUNNER_TEMP/testpak2-signed.apk" release/testpak2.apk
-          sha256sum release/testpak2.apk
+          sha256sum release/testpak2.apk > release/testpak2.apk.sha256
+          cat release/testpak2.apk.sha256
 
-      - name: Publish signed APK
+      - name: Publish signed Mini Zıpla APK
+        if: steps.oidc.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v\${{ env.APP_VERSION_NAME }}
-          name: Mini Zipla \${{ env.APP_VERSION_NAME }}
+          tag_name: v${{ env.APP_VERSION_NAME }}
+          name: Mini Zıpla ${{ env.APP_VERSION_NAME }}
           target_commitish: main
           make_latest: true
           generate_release_notes: true
-          files: release/testpak2.apk
+          files: |
+            release/testpak2.apk
+            release/testpak2.apk.sha256
           fail_on_unmatched_files: true
 
       - name: Upload signed APK artifact
+        if: steps.oidc.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: testpak2-signed-\${{ env.APP_VERSION_NAME }}
-          path: release/testpak2.apk
+          name: mini-zipla-signed-${{ env.APP_VERSION_NAME }}
+          path: |
+            release/testpak2.apk
+            release/testpak2.apk.sha256
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
