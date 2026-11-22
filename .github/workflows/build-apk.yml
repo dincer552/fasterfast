@@ -1,4 +1,4 @@
-name: Build, sign and publish Mini Zıpla
+name: Build, sign and publish FasterFastMini
 
 on:
   push:
@@ -12,12 +12,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: mini-zipla-${{ github.workflow }}-${{ github.ref }}
+  group: fasterfastmini-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-sign-release:
-    name: Build, verify, sign and publish Mini Zıpla
+    name: Build, verify, sign and publish FasterFastMini
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -124,12 +124,12 @@ jobs:
           sha256sum release/testpak2.apk > release/testpak2.apk.sha256
           cat release/testpak2.apk.sha256
 
-      - name: Publish signed Mini Zıpla APK
+      - name: Publish signed FasterFastMini APK
         if: steps.oidc.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION_NAME }}
-          name: Mini Zıpla ${{ env.APP_VERSION_NAME }}
+          name: FasterFastMini ${{ env.APP_VERSION_NAME }}
           target_commitish: main
           make_latest: true
           generate_release_notes: true
@@ -142,7 +142,7 @@ jobs:
         if: steps.oidc.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: mini-zipla-signed-${{ env.APP_VERSION_NAME }}
+          name: fasterfastmini-signed-${{ env.APP_VERSION_NAME }}
           path: |
             release/testpak2.apk
             release/testpak2.apk.sha256
