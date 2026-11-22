@@ -154,6 +154,7 @@ public final class MainActivity extends Activity {
             if (horizontalHit && playerOnGround) {
                 over = true;
                 started = false;
+                postInvalidate();
             } else {
                 postInvalidateDelayed(16L);
             }
