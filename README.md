@@ -11,8 +11,8 @@ Android için kesintisiz hareketli arena savaş oyunu. Oyuncu, aynı arenada dol
 ## Oynanış
 
 - Arenada 1 oyuncu ve 29 bot bulunur. Bütün toplar sürekli hareket eder; harita sınırına çarpınca sekerek yön değiştirir.
-- Oyuncu ekrana dokunarak veya sürükleyerek yönünü belirler.
-- Her top baktığı yöne otomatik ateş eder. Menzil ve mermi hasarı topun büyüklüğüne göre artar; büyük toplar daha yavaş hareket eder.
+- Oyuncu, ekranın sağ altındaki saydam joystick'i sürükleyerek yönünü belirler. Joystick bırakılınca top son yönünde ilerlemeyi sürdürür.
+- Her top baktığı yöne otomatik ateş eder. Sağ alt joystick yalnızca hareket yönünü kontrol eder; ateş otomatik kalır. Menzil ve mermi hasarı topun büyüklüğüne göre artar; büyük toplar daha yavaş hareket eder.
 - Rakip parçalanınca geriye puan ve büyüme sağlayan parçalar bırakır. Bunları ilk toplayan top kazanır; botlar da kalıntıların peşine düşer.
 - Parçalanan oyuncu/bot kısa süre sonra yeniden doğar. Yeniden doğan top önceki puanının bir kısmını korur.
 - Haritadaki çok küçük sabit yemler yalnızca az miktarda puan kazandırır.

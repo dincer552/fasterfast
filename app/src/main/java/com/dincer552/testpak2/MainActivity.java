@@ -70,6 +70,9 @@ public final class MainActivity extends Activity {
         private boolean initialized;
         private float downX, downY;
         private boolean dragging;
+        private boolean joystickActive;
+        private int joystickPointerId = -1;
+        private float joystickKnobX, joystickKnobY;
         private int playerKills;
 
         ArenaGame() {
@@ -158,6 +161,67 @@ public final class MainActivity extends Activity {
             if (player != null && player.alive) result.add(player);
             for (Orb bot : bots) if (bot.alive) result.add(bot);
             return result;
+        }
+
+        private float dp(float value) {
+            return value * getResources().getDisplayMetrics().density;
+        }
+
+        private float joystickCenterX() {
+            return getWidth() - dp(82f);
+        }
+
+        private float joystickCenterY() {
+            return getHeight() - dp(102f);
+        }
+
+        private float joystickRadius() {
+            return dp(62f);
+        }
+
+        private float joystickKnobLimit() {
+            return dp(42f);
+        }
+
+        private boolean isInsideJoystick(float x, float y) {
+            float dx = x - joystickCenterX();
+            float dy = y - joystickCenterY();
+            float hitRadius = joystickRadius() * 1.28f;
+            return dx * dx + dy * dy <= hitRadius * hitRadius;
+        }
+
+        private void beginJoystick(float x, float y, int pointerId) {
+            joystickActive = true;
+            joystickPointerId = pointerId;
+            updateJoystick(x, y);
+        }
+
+        private void updateJoystick(float x, float y) {
+            float cx = joystickCenterX();
+            float cy = joystickCenterY();
+            float dx = x - cx;
+            float dy = y - cy;
+            float length = (float) Math.sqrt(dx * dx + dy * dy);
+            float limit = joystickKnobLimit();
+            if (length > limit && length > 0f) {
+                dx = dx / length * limit;
+                dy = dy / length * limit;
+                length = limit;
+            }
+            joystickKnobX = cx + dx;
+            joystickKnobY = cy + dy;
+
+            float deadZone = dp(7f);
+            if (length > deadZone && player != null && player.alive) {
+                player.heading = (float) Math.atan2(dy, dx);
+            }
+        }
+
+        private void endJoystick() {
+            joystickActive = false;
+            joystickPointerId = -1;
+            joystickKnobX = joystickCenterX();
+            joystickKnobY = joystickCenterY();
         }
 
         private void aimAt(float screenX, float screenY) {
@@ -502,6 +566,7 @@ public final class MainActivity extends Activity {
             canvas.restore();
 
             drawHud(canvas, now);
+            if (started) drawJoystick(canvas);
             if (!started) drawStartScreen(canvas);
             if (started) postInvalidateDelayed(16L);
         }
@@ -763,6 +828,48 @@ public final class MainActivity extends Activity {
             }
         }
 
+        private void drawJoystick(Canvas canvas) {
+            float cx = joystickCenterX();
+            float cy = joystickCenterY();
+            float radius = joystickRadius();
+            if (!joystickActive) {
+                joystickKnobX = cx;
+                joystickKnobY = cy;
+            }
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(48, 210, 231, 244));
+            canvas.drawCircle(cx, cy, radius, paint);
+
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2f));
+            paint.setColor(Color.argb(116, 226, 241, 251));
+            canvas.drawCircle(cx, cy, radius, paint);
+
+            paint.setStrokeWidth(dp(1f));
+            paint.setColor(Color.argb(55, 226, 241, 251));
+            canvas.drawLine(cx - radius * 0.58f, cy, cx + radius * 0.58f, cy, paint);
+            canvas.drawLine(cx, cy - radius * 0.58f, cx, cy + radius * 0.58f, paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(94, 186, 215, 234));
+            canvas.drawCircle(joystickKnobX, joystickKnobY, dp(23f), paint);
+
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2f));
+            paint.setColor(Color.argb(172, 239, 248, 255));
+            canvas.drawCircle(joystickKnobX, joystickKnobY, dp(23f), paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(85, 255, 255, 255));
+            canvas.drawCircle(joystickKnobX, joystickKnobY, dp(8f), paint);
+
+            text.setTextAlign(Paint.Align.CENTER);
+            text.setTextSize(dp(9f));
+            text.setColor(Color.argb(150, 244, 249, 255));
+            canvas.drawText("YÖN", cx, cy + radius + dp(15f), text);
+        }
+
         private void drawStartScreen(Canvas canvas) {
             float w = getWidth();
             float h = getHeight();
@@ -795,25 +902,67 @@ public final class MainActivity extends Activity {
         }
 
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+            int action = event.getActionMasked();
+            int actionIndex = event.getActionIndex();
+
+            if (action == MotionEvent.ACTION_DOWN) {
                 downX = event.getX();
                 downY = event.getY();
                 dragging = false;
-                if (!started) startGame();
-                else aimAt(event.getX(), event.getY());
-                return true;
-            }
-            if (!started) return true;
-            if (event.getAction() == MotionEvent.ACTION_MOVE) {
-                float dx = event.getX() - downX;
-                float dy = event.getY() - downY;
-                if (Math.sqrt(dx * dx + dy * dy) > 8f) dragging = true;
-                if (dragging) aimAt(event.getX(), event.getY());
+                if (!started) {
+                    startGame();
+                    return true;
+                }
+                if (isInsideJoystick(downX, downY)) {
+                    beginJoystick(downX, downY, event.getPointerId(0));
+                } else {
+                    aimAt(downX, downY);
+                }
                 invalidate();
                 return true;
             }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                aimAt(event.getX(), event.getY());
+
+            if (!started) return true;
+
+            if (action == MotionEvent.ACTION_POINTER_DOWN) {
+                float x = event.getX(actionIndex);
+                float y = event.getY(actionIndex);
+                if (!joystickActive && isInsideJoystick(x, y)) {
+                    beginJoystick(x, y, event.getPointerId(actionIndex));
+                    invalidate();
+                }
+                return true;
+            }
+
+            if (action == MotionEvent.ACTION_MOVE) {
+                if (joystickActive) {
+                    int pointerIndex = event.findPointerIndex(joystickPointerId);
+                    if (pointerIndex >= 0) {
+                        updateJoystick(event.getX(pointerIndex), event.getY(pointerIndex));
+                    }
+                } else {
+                    float dx = event.getX() - downX;
+                    float dy = event.getY() - downY;
+                    if (Math.sqrt(dx * dx + dy * dy) > 8f) dragging = true;
+                    if (dragging) aimAt(event.getX(), event.getY());
+                }
+                invalidate();
+                return true;
+            }
+
+            if (action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_UP) {
+                int liftedId = event.getPointerId(actionIndex);
+                if (joystickActive && liftedId == joystickPointerId) {
+                    endJoystick();
+                } else if (!joystickActive && action == MotionEvent.ACTION_UP) {
+                    aimAt(event.getX(), event.getY());
+                }
+                invalidate();
+                return true;
+            }
+
+            if (action == MotionEvent.ACTION_CANCEL) {
+                if (joystickActive) endJoystick();
                 invalidate();
                 return true;
             }
