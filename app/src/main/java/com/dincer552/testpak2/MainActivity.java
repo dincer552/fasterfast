@@ -46,6 +46,7 @@ public final class MainActivity extends Activity {
         private final ArrayList<Remnant> remnants = new ArrayList<>();
         private final ArrayList<Projectile> projectiles = new ArrayList<>();
         private final ArrayList<PowerUp> powerUps = new ArrayList<>();
+        private final ArrayList<Spark> sparks = new ArrayList<>();
         private final int[] colors = {
                 Color.rgb(255, 105, 91), Color.rgb(255, 165, 71),
                 Color.rgb(255, 215, 83), Color.rgb(161, 225, 83),
@@ -112,6 +113,7 @@ public final class MainActivity extends Activity {
             remnants.clear();
             projectiles.clear();
             powerUps.clear();
+            sparks.clear();
             playerKills = 0;
 
             player = new Orb("SEN", true, worldWidth * 0.5f,
@@ -273,8 +275,9 @@ public final class MainActivity extends Activity {
             if (player.alive) updatePlayer(player, dt);
             for (Orb bot : bots) if (bot.alive) updateBot(bot, dt, now);
 
-            // Overlapping orbs damage each other continuously; dt makes damage time-based.
+            // Rotating spike tips are solid: separate colliding orbs, spark on impact and deal contact damage.
             updateContactDamage(dt, now);
+            updateSparks(dt);
 
             for (Orb orb : allOrbs()) {
                 orb.fireTimer -= dt;
@@ -372,40 +375,181 @@ public final class MainActivity extends Activity {
             return chosen;
         }
 
+        private float spikeCollisionRadius(Orb orb) {
+            // Match the visible outer tips of the rotating 24-point spike ring.
+            return orb.radius * 1.29f + 1.6f;
+        }
+
         private void updateContactDamage(float dt, long now) {
             ArrayList<Orb> live = allOrbs();
-            for (int i = 0; i < live.size(); i++) {
-                Orb first = live.get(i);
-                if (!first.alive) continue;
 
-                for (int j = i + 1; j < live.size(); j++) {
-                    Orb second = live.get(j);
-                    if (!second.alive) continue;
+            // Two light separation passes keep crowded groups from remaining interlocked.
+            for (int pass = 0; pass < 2; pass++) {
+                for (int i = 0; i < live.size(); i++) {
+                    Orb first = live.get(i);
+                    if (!first.alive) continue;
 
-                    float centerDistance = distance(
-                            first.x, first.y, second.x, second.y);
-                    float overlap = first.radius + second.radius - centerDistance;
-                    if (overlap <= 0f) continue;
+                    for (int j = i + 1; j < live.size(); j++) {
+                        Orb second = live.get(j);
+                        if (!second.alive) continue;
 
-                    // Deeper overlap increases pressure; elapsed frame time controls total damage.
-                    float pressure = 0.72f + 0.58f * clamp(
-                            overlap / Math.max(1f, Math.min(first.radius, second.radius)),
-                            0f, 1f);
-                    float damageToSecond = CONTACT_DAMAGE_PER_SECOND
-                            * contactDamageMultiplier(first, second) * pressure * dt;
-                    float damageToFirst = CONTACT_DAMAGE_PER_SECOND
-                            * contactDamageMultiplier(second, first) * pressure * dt;
+                        float dx = second.x - first.x;
+                        float dy = second.y - first.y;
+                        float centerDistance = (float) Math.sqrt(dx * dx + dy * dy);
+                        float firstHitRadius = spikeCollisionRadius(first);
+                        float secondHitRadius = spikeCollisionRadius(second);
+                        float overlap = firstHitRadius + secondHitRadius - centerDistance;
+                        if (overlap <= 0f) continue;
 
-                    first.hp -= damageToFirst;
-                    second.hp -= damageToSecond;
+                        float nx;
+                        float ny;
+                        if (centerDistance > 0.001f) {
+                            nx = dx / centerDistance;
+                            ny = dy / centerDistance;
+                        } else {
+                            float fallbackAngle = first.phase - second.phase;
+                            nx = (float) Math.cos(fallbackAngle);
+                            ny = (float) Math.sin(fallbackAngle);
+                        }
 
-                    boolean firstDefeated = first.hp <= 0f;
-                    boolean secondDefeated = second.hp <= 0f;
-                    if (firstDefeated) destroyOrb(first, now);
-                    if (secondDefeated) destroyOrb(second, now);
-                    if (firstDefeated) break;
+                        if (pass == 0) {
+                            // Emit one short burst per impact, not a continuous cloud while touching.
+                            if (now - first.lastSpikeSparkAt >= 105L
+                                    && now - second.lastSpikeSparkAt >= 105L) {
+                                float contactX = first.x + nx * (firstHitRadius - overlap * 0.5f);
+                                float contactY = first.y + ny * (firstHitRadius - overlap * 0.5f);
+                                emitSpikeSparks(contactX, contactY, first.color, second.color);
+                                first.lastSpikeSparkAt = now;
+                                second.lastSpikeSparkAt = now;
+                            }
+
+                            // Bigger orbs have more mass, so the smaller orb is pushed farther away.
+                            reflectFromSpikeContact(first, nx, ny);
+                            reflectFromSpikeContact(second, -nx, -ny);
+                        }
+
+                        float massFirst = Math.max(25f, first.radius * first.radius);
+                        float massSecond = Math.max(25f, second.radius * second.radius);
+                        float totalMass = massFirst + massSecond;
+                        float separation = overlap + 0.35f;
+                        float moveFirst = separation * (massSecond / totalMass);
+                        float moveSecond = separation * (massFirst / totalMass);
+                        first.x -= nx * moveFirst;
+                        first.y -= ny * moveFirst;
+                        second.x += nx * moveSecond;
+                        second.y += ny * moveSecond;
+                        constrainOrbToArena(first);
+                        constrainOrbToArena(second);
+
+                        if (pass == 0) {
+                            // Larger spike rings deal more damage; elapsed frame time controls total damage.
+                            float pressure = 0.72f + 0.58f * clamp(
+                                    overlap / Math.max(1f, Math.min(first.radius, second.radius)),
+                                    0f, 1f);
+                            float damageToSecond = CONTACT_DAMAGE_PER_SECOND
+                                    * contactDamageMultiplier(first, second) * pressure * dt;
+                            float damageToFirst = CONTACT_DAMAGE_PER_SECOND
+                                    * contactDamageMultiplier(second, first) * pressure * dt;
+
+                            first.hp -= damageToFirst;
+                            second.hp -= damageToSecond;
+
+                            boolean firstDefeated = first.hp <= 0f;
+                            boolean secondDefeated = second.hp <= 0f;
+                            if (firstDefeated) destroyOrb(first, now);
+                            if (secondDefeated) destroyOrb(second, now);
+                            if (firstDefeated) break;
+                        }
+                    }
                 }
             }
+        }
+
+        private void constrainOrbToArena(Orb orb) {
+            float minX = Math.min(orb.radius + 7f, worldWidth * 0.5f);
+            float maxX = Math.max(minX, worldWidth - orb.radius - 7f);
+            float minY = Math.min(orb.radius + 7f, worldHeight * 0.5f);
+            float maxY = Math.max(minY, worldHeight - orb.radius - 7f);
+            orb.x = clamp(orb.x, minX, maxX);
+            orb.y = clamp(orb.y, minY, maxY);
+        }
+
+        private void reflectFromSpikeContact(Orb orb, float nx, float ny) {
+            float vx = (float) Math.cos(orb.heading);
+            float vy = (float) Math.sin(orb.heading);
+            float intoContact = vx * nx + vy * ny;
+            if (intoContact <= 0.015f) return;
+
+            float reflectedX = vx - 2f * intoContact * nx;
+            float reflectedY = vy - 2f * intoContact * ny;
+            orb.heading = (float) Math.atan2(reflectedY, reflectedX);
+            orb.heading = wrapAngle(orb.heading);
+            if (!orb.isPlayer) orb.desiredHeading = orb.heading;
+        }
+
+        private void emitSpikeSparks(float x, float y, int firstColor, int secondColor) {
+            for (int i = 0; i < 9; i++) {
+                float angle = rand(0f, (float) (Math.PI * 2.0));
+                float speed = rand(105f, 285f);
+                int color;
+                switch (i % 4) {
+                    case 0: color = Color.WHITE; break;
+                    case 1: color = Color.rgb(255, 218, 105); break;
+                    case 2: color = firstColor; break;
+                    default: color = secondColor; break;
+                }
+                sparks.add(new Spark(x, y,
+                        (float) Math.cos(angle) * speed,
+                        (float) Math.sin(angle) * speed,
+                        rand(0.16f, 0.34f), rand(3.5f, 7.5f), color));
+            }
+            if (sparks.size() > 270) {
+                sparks.subList(0, sparks.size() - 270).clear();
+            }
+        }
+
+        private void updateSparks(float dt) {
+            Iterator<Spark> iterator = sparks.iterator();
+            while (iterator.hasNext()) {
+                Spark spark = iterator.next();
+                spark.x += spark.vx * dt;
+                spark.y += spark.vy * dt;
+                spark.vx *= Math.max(0f, 1f - 2.2f * dt);
+                spark.vy = spark.vy * Math.max(0f, 1f - 2.2f * dt) + 65f * dt;
+                spark.life -= dt;
+                if (spark.life <= 0f) iterator.remove();
+            }
+        }
+
+        private void drawSparks(Canvas canvas) {
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            for (Spark spark : sparks) {
+                if (!visible(spark.x, spark.y, 24f)) continue;
+                float fade = clamp(spark.life / spark.maxLife, 0f, 1f);
+                int alpha = (int) (245f * fade);
+                float speed = (float) Math.sqrt(
+                        spark.vx * spark.vx + spark.vy * spark.vy);
+                float dirX = speed > 0.01f ? spark.vx / speed : 1f;
+                float dirY = speed > 0.01f ? spark.vy / speed : 0f;
+                float tailX = dirX * spark.length;
+                float tailY = dirY * spark.length;
+
+                paint.setStrokeWidth(4f * fade + 1f);
+                paint.setColor(Color.argb(alpha / 3,
+                        Color.red(spark.color), Color.green(spark.color),
+                        Color.blue(spark.color)));
+                canvas.drawLine(spark.x - tailX, spark.y - tailY,
+                        spark.x + tailX * 0.45f, spark.y + tailY * 0.45f, paint);
+
+                paint.setStrokeWidth(1.6f * fade + 0.6f);
+                paint.setColor(Color.argb(alpha,
+                        Color.red(spark.color), Color.green(spark.color),
+                        Color.blue(spark.color)));
+                canvas.drawLine(spark.x - tailX, spark.y - tailY,
+                        spark.x + tailX * 0.45f, spark.y + tailY * 0.45f, paint);
+            }
+            paint.setStyle(Paint.Style.FILL);
         }
 
         private float contactDamageMultiplier(Orb attacker, Orb defender) {
@@ -647,6 +791,7 @@ public final class MainActivity extends Activity {
             drawProjectiles(canvas, now);
             if (player != null && player.alive) drawOrb(canvas, player, now);
             for (Orb bot : bots) if (bot.alive) drawOrb(canvas, bot, now);
+            drawSparks(canvas);
             canvas.restore();
 
             drawHud(canvas, now);
@@ -1048,6 +1193,7 @@ public final class MainActivity extends Activity {
             float idleTimer, decayTimer;
             long respawnAt;
             long tripleUntil, quadUntil, damageUntil, rateUntil;
+            long lastSpikeSparkAt;
             boolean alive = true;
 
             Orb(String name, boolean isPlayer, float x, float y, float radius, int colorIndex) {
@@ -1091,6 +1237,24 @@ public final class MainActivity extends Activity {
             PowerUp(float x, float y, int type) {
                 this.x = x; this.y = y; this.type = type;
                 this.phase = rand(0f, 6.28f);
+            }
+        }
+
+        private final class Spark {
+            float x, y, vx, vy, life;
+            final float maxLife, length;
+            final int color;
+
+            Spark(float x, float y, float vx, float vy,
+                  float life, float length, int color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.life = life;
+                this.maxLife = life;
+                this.length = length;
+                this.color = color;
             }
         }
 
