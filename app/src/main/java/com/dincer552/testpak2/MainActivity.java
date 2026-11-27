@@ -33,6 +33,10 @@ public final class MainActivity extends Activity {
         private static final float BULLET_SPEED = 930f;
         private static final float BASE_FIRE_INTERVAL = 0.83f;
         private static final long RESPAWN_DELAY_MS = 2600L;
+        // Contact damage is applied per second for every frame two orbs overlap.
+        private static final float CONTACT_DAMAGE_PER_SECOND = 24f;
+        private static final float BOT_FLEE_DISTANCE = 980f;
+        private static final float BOT_FLEE_SIZE_RATIO = 1.08f;
 
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -269,6 +273,9 @@ public final class MainActivity extends Activity {
             if (player.alive) updatePlayer(player, dt);
             for (Orb bot : bots) if (bot.alive) updateBot(bot, dt, now);
 
+            // Overlapping orbs damage each other continuously; dt makes damage time-based.
+            updateContactDamage(dt, now);
+
             for (Orb orb : allOrbs()) {
                 orb.fireTimer -= dt;
                 if (orb.fireTimer <= 0f) fireForward(orb, now);
@@ -296,36 +303,39 @@ public final class MainActivity extends Activity {
         private void updateBot(Orb bot, float dt, long now) {
             bot.aiTimer -= dt;
             if (bot.aiTimer <= 0f) {
-                bot.aiTimer = rand(0.22f, 0.48f);
-                Orb target = nearestOpponent(bot, 930f);
-                if (target != null) {
-                    float d = distance(bot.x, bot.y, target.x, target.y);
-                    float desired;
-                    if (target.radius > bot.radius * 1.28f && d < 660f) {
-                        desired = (float) Math.atan2(bot.y - target.y, bot.x - target.x);
-                    } else {
-                        desired = (float) Math.atan2(target.y - bot.y, target.x - bot.x);
-                    }
-                    bot.desiredHeading = desired;
-                } else {
-                    bot.desiredHeading += rand(-1.2f, 1.2f);
-                }
+                bot.aiTimer = rand(0.18f, 0.34f);
 
-                Remnant loot = nearestRemnant(bot.x, bot.y, 540f);
-                if (loot != null) {
-                    float lootAngle = (float) Math.atan2(loot.y - bot.y, loot.x - bot.x);
-                    bot.desiredHeading = bot.desiredHeading * 0.62f + lootAngle * 0.38f;
+                // Survival takes priority: bots flee from any nearby orb noticeably larger than them.
+                Orb threat = nearestLargerOpponent(bot, BOT_FLEE_DISTANCE);
+                if (threat != null) {
+                    float away = (float) Math.atan2(bot.y - threat.y, bot.x - threat.x);
+                    float sideStep = (bot.name.hashCode() & 1) == 0 ? 0.22f : -0.22f;
+                    bot.desiredHeading = wrapAngle(away + sideStep);
                 } else {
-                    Food food = nearestFood(bot.x, bot.y, 440f);
-                    if (food != null && bot.score < 25f) {
-                        float foodAngle = (float) Math.atan2(food.y - bot.y, food.x - bot.x);
-                        bot.desiredHeading = bot.desiredHeading * 0.70f + foodAngle * 0.30f;
+                    Orb target = nearestOpponent(bot, 930f);
+                    if (target != null) {
+                        bot.desiredHeading = (float) Math.atan2(
+                                target.y - bot.y, target.x - bot.x);
+                    } else {
+                        bot.desiredHeading += rand(-1.2f, 1.2f);
+                    }
+
+                    Remnant loot = nearestRemnant(bot.x, bot.y, 540f);
+                    if (loot != null) {
+                        float lootAngle = (float) Math.atan2(loot.y - bot.y, loot.x - bot.x);
+                        bot.desiredHeading = bot.desiredHeading * 0.62f + lootAngle * 0.38f;
+                    } else {
+                        Food food = nearestFood(bot.x, bot.y, 440f);
+                        if (food != null && bot.score < 25f) {
+                            float foodAngle = (float) Math.atan2(food.y - bot.y, food.x - bot.x);
+                            bot.desiredHeading = bot.desiredHeading * 0.70f + foodAngle * 0.30f;
+                        }
                     }
                 }
             }
 
             float difference = wrapAngle(bot.desiredHeading - bot.heading);
-            float turn = clamp(difference, -1.85f * dt, 1.85f * dt);
+            float turn = clamp(difference, -2.25f * dt, 2.25f * dt);
             bot.heading = wrapAngle(bot.heading + turn);
             moveAndBounce(bot, dt);
         }
@@ -343,6 +353,64 @@ public final class MainActivity extends Activity {
                 if (d < best) { best = d; chosen = bot; }
             }
             return chosen;
+        }
+
+        private Orb nearestLargerOpponent(Orb source, float maxDistance) {
+            Orb chosen = null;
+            float best = maxDistance;
+            if (player != source && player != null && player.alive
+                    && player.radius > source.radius * BOT_FLEE_SIZE_RATIO) {
+                float d = distance(source.x, source.y, player.x, player.y);
+                if (d < best) { best = d; chosen = player; }
+            }
+            for (Orb bot : bots) {
+                if (!bot.alive || bot == source
+                        || bot.radius <= source.radius * BOT_FLEE_SIZE_RATIO) continue;
+                float d = distance(source.x, source.y, bot.x, bot.y);
+                if (d < best) { best = d; chosen = bot; }
+            }
+            return chosen;
+        }
+
+        private void updateContactDamage(float dt, long now) {
+            ArrayList<Orb> live = allOrbs();
+            for (int i = 0; i < live.size(); i++) {
+                Orb first = live.get(i);
+                if (!first.alive) continue;
+
+                for (int j = i + 1; j < live.size(); j++) {
+                    Orb second = live.get(j);
+                    if (!second.alive) continue;
+
+                    float centerDistance = distance(
+                            first.x, first.y, second.x, second.y);
+                    float overlap = first.radius + second.radius - centerDistance;
+                    if (overlap <= 0f) continue;
+
+                    // Deeper overlap increases pressure; elapsed frame time controls total damage.
+                    float pressure = 0.72f + 0.58f * clamp(
+                            overlap / Math.max(1f, Math.min(first.radius, second.radius)),
+                            0f, 1f);
+                    float damageToSecond = CONTACT_DAMAGE_PER_SECOND
+                            * contactDamageMultiplier(first, second) * pressure * dt;
+                    float damageToFirst = CONTACT_DAMAGE_PER_SECOND
+                            * contactDamageMultiplier(second, first) * pressure * dt;
+
+                    first.hp -= damageToFirst;
+                    second.hp -= damageToSecond;
+
+                    boolean firstDefeated = first.hp <= 0f;
+                    boolean secondDefeated = second.hp <= 0f;
+                    if (firstDefeated) destroyOrb(first, now);
+                    if (secondDefeated) destroyOrb(second, now);
+                    if (firstDefeated) break;
+                }
+            }
+        }
+
+        private float contactDamageMultiplier(Orb attacker, Orb defender) {
+            float sizeRatio = attacker.radius / Math.max(1f, defender.radius);
+            return clamp((float) Math.pow(sizeRatio, 1.18d), 0.30f, 3.20f);
         }
 
         private Remnant nearestRemnant(float x, float y, float maxDistance) {
