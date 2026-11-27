@@ -14,7 +14,8 @@ Android için kesintisiz hareketli arena savaş oyunu. Oyuncu, aynı arenada dol
 - Toplar birbirinin içinden geçerken temas süresi boyunca sürekli hasar verir. Hasar her saniye hesaplanır; temas uzadıkça toplam hasar artar ve büyük top küçük topa daha ağır hasar verir.
 - Botlar kendilerinden belirgin biçimde büyük rakipleri yakında gördüklerinde yem/parça aramayı bırakıp öncelikle kaçar.
 - Oyuncu, ekranın sağ altındaki saydam joystick'i sürükleyerek yönünü belirler. Joystick bırakılınca top son yönünde ilerlemeyi sürdürür.
-- Her top baktığı yöne otomatik ateş eder. Sağ alt joystick yalnızca hareket yönünü kontrol eder; ateş otomatik kalır. Menzil ve mermi hasarı topun büyüklüğüne göre artar; büyük toplar daha yavaş hareket eder.
+- Dikenler sürekli ve belirgin biçimde döner. Toplar yem ve kalıntı topladıkça büyür; yapay bir maksimum boyut sınırı yoktur.
+- Her top otomatik olarak tek tek, parlak mermi topları halinde seri ateş eder; eski çizgi/ışın efekti kaldırılmıştır. Haritadaki geçici güçler 6,2 saniyeliğine üçlü atış, dörtlü saçılmalı atış, daha hızlı atış veya güçlü mermi sağlar. Büyük topların mermileri daha güçlü ve menzili daha uzundur.
 - Rakip parçalanınca geriye puan ve büyüme sağlayan parçalar bırakır. Bunları ilk toplayan top kazanır; botlar da kalıntıların peşine düşer.
 - Parçalanan oyuncu/bot kısa süre sonra yeniden doğar. Yeniden doğan top önceki puanının bir kısmını korur.
 - Haritadaki çok küçük sabit yemler yalnızca az miktarda puan kazandırır.

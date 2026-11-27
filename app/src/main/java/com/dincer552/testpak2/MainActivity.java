@@ -28,10 +28,10 @@ public final class MainActivity extends Activity {
     final class ArenaGame extends View {
         private static final int BOT_COUNT = 29;
         private static final int FOOD_COUNT = 210;
-        private static final float MAX_RADIUS = 74f;
         private static final float MIN_RADIUS = 19f;
-        private static final float BULLET_SPEED = 930f;
-        private static final float BASE_FIRE_INTERVAL = 0.83f;
+        private static final float BULLET_SPEED = 1120f;
+        private static final float BASE_FIRE_INTERVAL = 0.19f;
+        private static final long POWERUP_DURATION_MS = 6200L;
         private static final long RESPAWN_DELAY_MS = 2600L;
         // Contact damage is applied per second for every frame two orbs overlap.
         private static final float CONTACT_DAMAGE_PER_SECOND = 24f;
@@ -149,7 +149,7 @@ public final class MainActivity extends Activity {
 
         private PowerUp createPowerUp() {
             return new PowerUp(rand(90f, worldWidth - 90f),
-                    rand(100f, worldHeight - 100f), random.nextInt(4));
+                    rand(100f, worldHeight - 100f), random.nextInt(5));
         }
 
         private void startGame() {
@@ -438,10 +438,11 @@ public final class MainActivity extends Activity {
             orb.x += (float) Math.cos(orb.heading) * speed * dt;
             orb.y += (float) Math.sin(orb.heading) * speed * dt;
 
-            float minX = orb.radius + 7f;
-            float maxX = worldWidth - orb.radius - 7f;
-            float minY = orb.radius + 7f;
-            float maxY = worldHeight - orb.radius - 7f;
+            // Growth has no gameplay cap; once an orb is wider than the arena it stays centered.
+            float minX = Math.min(orb.radius + 7f, worldWidth * 0.5f);
+            float maxX = Math.max(minX, worldWidth - orb.radius - 7f);
+            float minY = Math.min(orb.radius + 7f, worldHeight * 0.5f);
+            float maxY = Math.max(minY, worldHeight - orb.radius - 7f);
 
             if (orb.x < minX) {
                 orb.x = minX;
@@ -463,17 +464,29 @@ public final class MainActivity extends Activity {
         private void fireForward(Orb shooter, long now) {
             if (!shooter.alive) return;
             float size = shooter.radius;
-            float range = 265f + size * 9.8f + (now < shooter.rangeUntil ? 260f : 0f);
-            float damage = 4.0f + size * 0.36f;
-            if (now < shooter.damageUntil) damage *= 1.72f;
+            float range = 320f + size * 10.5f;
+            float damage = 3.8f + size * 0.31f;
+            if (now < shooter.damageUntil) damage *= 1.65f;
+
+            // Temporary pickups switch the weapon to three- or four-pellet spread fire.
+            int pelletCount = now < shooter.quadUntil ? 4
+                    : now < shooter.tripleUntil ? 3 : 1;
+            float spread = pelletCount == 4 ? 0.34f : 0.25f;
+            float bulletRadius = clamp(size * 0.075f, 3.2f, 7.5f);
+            float muzzle = size + 5f;
+            for (int i = 0; i < pelletCount; i++) {
+                float offset = pelletCount == 1 ? 0f
+                        : (i - (pelletCount - 1) * 0.5f) * spread;
+                float angle = shooter.heading + offset;
+                float startX = shooter.x + (float) Math.cos(angle) * muzzle;
+                float startY = shooter.y + (float) Math.sin(angle) * muzzle;
+                projectiles.add(new Projectile(shooter, startX, startY, angle,
+                        range, damage, shooter.color, bulletRadius));
+            }
+
             float interval = BASE_FIRE_INTERVAL;
             if (now < shooter.rateUntil) interval *= 0.48f;
-            interval *= clamp(31f / size, 0.64f, 1.35f);
-
-            float startX = shooter.x + (float) Math.cos(shooter.heading) * (size + 5f);
-            float startY = shooter.y + (float) Math.sin(shooter.heading) * (size + 5f);
-            projectiles.add(new Projectile(shooter, startX, startY, shooter.heading,
-                    range, damage, shooter.color));
+            interval *= clamp(31f / size, 0.58f, 1.35f);
             shooter.fireTimer = interval;
         }
 
@@ -552,7 +565,7 @@ public final class MainActivity extends Activity {
                     if (distance(orb.x, orb.y, food.x, food.y) <= orb.radius + food.radius) {
                         foods.remove(i);
                         orb.score += 1f;
-                        orb.radius = Math.min(MAX_RADIUS, orb.radius + 0.025f);
+                        orb.radius += 0.025f;
                         orb.hp = Math.min(orb.maxHp, orb.hp + 0.35f);
                         if (orb == player) showMessage("+1 küçük yem puanı");
                     }
@@ -563,8 +576,7 @@ public final class MainActivity extends Activity {
                     if (distance(orb.x, orb.y, piece.x, piece.y) <= orb.radius + piece.radius) {
                         remnants.remove(i);
                         orb.score += piece.value;
-                        orb.radius = Math.min(MAX_RADIUS,
-                                orb.radius + Math.min(1.3f, piece.value * 0.075f));
+                        orb.radius += Math.min(1.3f, piece.value * 0.075f);
                         orb.maxHp += piece.value * 0.55f;
                         orb.hp = Math.min(orb.maxHp, orb.hp + piece.value * 0.65f);
                         orb.idleTimer = 0f;
@@ -587,18 +599,22 @@ public final class MainActivity extends Activity {
         }
 
         private void applyPowerUp(Orb orb, PowerUp power, long now) {
+            long expires = now + POWERUP_DURATION_MS;
             if (power.type == 0) {
-                orb.rangeUntil = now + 15000L;
+                orb.tripleUntil = expires;
             } else if (power.type == 1) {
-                orb.damageUntil = now + 15000L;
+                orb.quadUntil = expires;
             } else if (power.type == 2) {
-                orb.rateUntil = now + 15000L;
+                orb.rateUntil = expires;
+            } else if (power.type == 3) {
+                orb.damageUntil = expires;
             } else {
                 orb.hp = Math.min(orb.maxHp, orb.hp + Math.max(32f, orb.maxHp * 0.48f));
             }
             if (orb == player) {
-                String[] labels = {"UZUN MENZİL", "GÜÇLÜ ATIŞ", "HIZLI ATEŞ", "CAN YENİLENDİ"};
-                showMessage("ÖZEL GÜÇ: " + labels[power.type]);
+                String[] labels = {"ÜÇLÜ ATIŞ", "DÖRTLÜ ATIŞ", "SERİ ATEŞ",
+                        "GÜÇLÜ MERMİ", "CAN YENİLENDİ"};
+                showMessage("KISA SÜRELİ GÜÇ: " + labels[power.type]);
             }
         }
 
@@ -694,10 +710,11 @@ public final class MainActivity extends Activity {
         }
 
         private void drawPowerUps(Canvas canvas, long now) {
-            String[] icons = {"R", "D", "F", "+"};
+            String[] icons = {"3", "4", "»", "✦", "+"};
             int[] powerColors = {
-                    Color.rgb(75, 198, 255), Color.rgb(255, 104, 95),
-                    Color.rgb(255, 202, 72), Color.rgb(88, 238, 157)
+                    Color.rgb(75, 198, 255), Color.rgb(186, 116, 255),
+                    Color.rgb(255, 202, 72), Color.rgb(255, 104, 95),
+                    Color.rgb(88, 238, 157)
             };
             for (PowerUp item : powerUps) {
                 if (!visible(item.x, item.y, 40f)) continue;
@@ -724,7 +741,7 @@ public final class MainActivity extends Activity {
             if (!visible(orb.x, orb.y, orb.radius * 2f)) return;
             float pulse = (float) Math.sin(now * 0.004f + orb.phase) * 1.6f;
             float r = orb.radius + pulse;
-            float rotation = now * 0.0017f + orb.phase;
+            float rotation = now * 0.0065f + orb.phase;
 
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.argb(45, Color.red(orb.color),
@@ -777,7 +794,8 @@ public final class MainActivity extends Activity {
             canvas.drawText(orb.name, orb.x, orb.y - r * 1.48f, text);
             text.clearShadowLayer();
 
-            if (now < orb.rangeUntil || now < orb.damageUntil || now < orb.rateUntil) {
+            if (now < orb.tripleUntil || now < orb.quadUntil
+                    || now < orb.damageUntil || now < orb.rateUntil) {
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(2.5f);
                 paint.setColor(Color.argb(220, 255, 255, 255));
@@ -794,35 +812,18 @@ public final class MainActivity extends Activity {
         }
 
         private void drawProjectiles(Canvas canvas, long now) {
+            // Each shot is a separate glowing pellet; no continuous beam or line trail.
             for (Projectile shot : projectiles) {
-                float dx = shot.x - shot.startX;
-                float dy = shot.y - shot.startY;
-                float length = (float) Math.sqrt(dx * dx + dy * dy);
-                if (length < 2f || !visible(shot.x, shot.y, 30f)) continue;
-                float nx = -dy / length;
-                float ny = dx / length;
-                Path trail = new Path();
-                int segments = 8;
-                for (int i = 0; i <= segments; i++) {
-                    float t = i / (float) segments;
-                    float wave = (float) Math.sin(t * 18f + now * 0.025f) * 4.5f;
-                    float x = shot.startX + dx * t + nx * wave;
-                    float y = shot.startY + dy * t + ny * wave;
-                    if (i == 0) trail.moveTo(x, y); else trail.lineTo(x, y);
-                }
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeCap(Paint.Cap.ROUND);
-                paint.setStrokeWidth(7f);
-                paint.setColor(Color.argb(65, Color.red(shot.color),
-                        Color.green(shot.color), Color.blue(shot.color)));
-                canvas.drawPath(trail, paint);
-                paint.setStrokeWidth(2.8f);
-                paint.setColor(Color.argb(245, Color.red(shot.color),
-                        Color.green(shot.color), Color.blue(shot.color)));
-                canvas.drawPath(trail, paint);
+                if (!visible(shot.x, shot.y, shot.radius * 3f)) continue;
                 paint.setStyle(Paint.Style.FILL);
-                paint.setColor(Color.WHITE);
-                canvas.drawCircle(shot.x, shot.y, 3.5f, paint);
+                paint.setColor(Color.argb(62, Color.red(shot.color),
+                        Color.green(shot.color), Color.blue(shot.color)));
+                canvas.drawCircle(shot.x, shot.y, shot.radius * 2.5f, paint);
+                paint.setColor(shot.color);
+                canvas.drawCircle(shot.x, shot.y, shot.radius, paint);
+                paint.setColor(Color.argb(235, 255, 255, 255));
+                canvas.drawCircle(shot.x - shot.radius * 0.22f,
+                        shot.y - shot.radius * 0.22f, shot.radius * 0.36f, paint);
             }
         }
 
@@ -1046,7 +1047,7 @@ public final class MainActivity extends Activity {
             float heading, desiredHeading, fireTimer, aiTimer;
             float idleTimer, decayTimer;
             long respawnAt;
-            long rangeUntil, damageUntil, rateUntil;
+            long tripleUntil, quadUntil, damageUntil, rateUntil;
             boolean alive = true;
 
             Orb(String name, boolean isPlayer, float x, float y, float radius, int colorIndex) {
@@ -1095,11 +1096,11 @@ public final class MainActivity extends Activity {
 
         private final class Projectile {
             final Orb owner;
-            final float startX, startY, heading, range, damage;
+            final float startX, startY, heading, range, damage, radius;
             final int color;
             float x, y, travelled;
             Projectile(Orb owner, float startX, float startY, float heading,
-                       float range, float damage, int color) {
+                       float range, float damage, int color, float radius) {
                 this.owner = owner;
                 this.startX = startX;
                 this.startY = startY;
@@ -1109,6 +1110,7 @@ public final class MainActivity extends Activity {
                 this.range = range;
                 this.damage = damage;
                 this.color = color;
+                this.radius = radius;
             }
         }
     }
