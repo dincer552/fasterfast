@@ -1,28 +1,23 @@
-# FasterFastMini
+# Sunny Sip Bar
 
-Android için kesintisiz hareketli arena savaş oyunu. Oyuncu, aynı arenada dolaşan 29 botla rekabet eder.
+Android için renkli, animasyonlu bir sahil kafesi işletme oyunu.
 
-- Görünen uygulama adı: **FasterFastMini**
+- Görünen uygulama adı: **Sunny Sip Bar**
 - Android paket adı: `com.dincer552.testpak2` (mevcut kurulumların güncellenebilmesi için korunur)
 - İmza profili: `testpak2` (mevcut merkezi imzalama anahtarı korunur)
-- My App Store katalog dosyası: `testpak2.apk` (mağaza kataloğu uyumluluğu için korunur)
-- Her `main` sürümü Android APK olarak derlenir, merkezi VM imzalayıcısıyla imzalanır ve doğrulanır.
+- My App Store katalog dosyası: `testpak2.apk`
 
 ## Oynanış
 
-- Arenada 1 oyuncu ve 29 bot bulunur. Bütün toplar sürekli hareket eder; harita sınırına çarpınca sekerek yön değiştirir.
-- Dönen diken halkaları katı çarpışma sınırına sahiptir: dikenler birbirinin içinden geçemez. Çarpışmada parlak kıvılcımlar çıkar, toplar fiziksel olarak birbirinden sekerek ayrılır. Temas süresi boyunca hasar verilir; büyük top küçük topa daha ağır hasar verir.
-- Botlar kendilerinden belirgin biçimde büyük rakipleri yakında gördüklerinde yem/parça aramayı bırakıp öncelikle kaçar.
-- Oyuncu, ekranın sağ altındaki saydam joystick'i sürükleyerek yönünü belirler. Joystick bırakılınca top son yönünde ilerlemeyi sürdürür.
-- Dikenler sürekli ve belirgin biçimde döner. Toplar yem ve kalıntı topladıkça büyür; yapay bir maksimum boyut sınırı yoktur.
-- Her top otomatik olarak tek tek, parlak mermi topları halinde seri ateş eder; eski çizgi/ışın efekti kaldırılmıştır. Haritadaki geçici güçler 6,2 saniyeliğine üçlü atış, dörtlü saçılmalı atış, daha hızlı atış, güçlü mermi veya can yenileme sağlar. Büyük topların mermileri daha güçlü ve menzili daha uzundur.
-- Rakip parçalanınca geriye puan ve büyüme sağlayan parçalar bırakır. Bunları ilk toplayan top kazanır; botlar da kalıntıların peşine düşer.
-- Parçalanan oyuncu/bot kısa süre sonra yeniden doğar. Yeniden doğan top önceki puanının bir kısmını korur.
-- Haritadaki çok küçük sabit yemler yalnızca az miktarda puan kazandırır.
-- Rakip kalıntısı toplamadan uzun süre kalan topların puanı zamanla azalır.
-- Özel nesneler geçici güç verir: **üçlü atış**, **dörtlü atış**, **seri ateş**, **güçlü mermi** ve **can yenileme**.
-- Sağ üstte anlık ilk 5 sıralaması görünür.
+- Sahil kafesine farklı karakterlerde müşteriler gelir; her müşterinin ayrı içecek siparişi ve sabır göstergesi vardır.
+- Müşteriye dokunarak siparişini seç.
+- Malzemeleri dokunarak bardağa ekle: buz, limon, çilek, kahve, süt, nane ve portakal.
+- Dört tarif bulunur: limonata, çilek fizz, buzlu kahve ve tropik içecek.
+- Üç malzemeyi doğru tarifte birleştirip **Karıştır** düğmesine bas; ardından **Müşteriye Ver** ile siparişi teslim et.
+- Doğru siparişler coin kazandırır, seri servis bonusu verir ve her beş teslimatta seviye yükselir.
+- Müşteriler beklerken sabırları azalır; siparişleri zamanında hazırlamak gerekir.
+- Karakterler, deniz, palmiye, kafe tezgâhı, içecekler ve malzeme ekleme efektleri hareketlidir.
 
 ## Teknik ve yayın
 
-Paket kimliği ve imza sertifikası mevcut Android kurulumlarının güncellenebilmesi için değiştirilmez. GitHub Actions, APK'yı derler; paket adı/sürüm doğrulamasını yapar; merkezi VM imzalayıcısı ile imzalar; `apksigner verify` ve `zipalign -c` kontrollerinden sonra `testpak2.apk` adıyla Release yayımlar.
+Paket kimliği ve imza sertifikası mevcut Android kurulumlarının güncellenebilmesi için değiştirilmez. GitHub Actions, APK'yı derler; paket adı/sürüm doğrulamasını yapar; merkezi VM imzalayıcısı ile imzalar; doğrulamadan sonra `testpak2.apk` adıyla Release yayımlar.
