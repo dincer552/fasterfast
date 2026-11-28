@@ -27,6 +27,12 @@ public final class MainActivity extends Activity {
     final class SunnySipGame extends View {
         private static final float W = 390f;
         private static final float H = 844f;
+        private static final int C_ARRIVING = 0;
+        private static final int C_WAITING = 1;
+        private static final int C_ANGRY = 2;
+        private static final int C_BANGING = 3;
+        private static final int C_DRINKING = 4;
+        private static final int C_LEAVING = 5;
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint t = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Random random = new Random();
@@ -82,10 +88,30 @@ public final class MainActivity extends Activity {
                     Color.rgb(245, 196, 151), Color.rgb(133, 85, 62)};
             int[] shirts = {Color.rgb(255, 132, 116), Color.rgb(85, 171, 145),
                     Color.rgb(103, 145, 220), Color.rgb(243, 190, 81)};
-            return new Customer(names[random.nextInt(names.length)],
+            Customer customer = new Customer(names[random.nextInt(names.length)],
                     skin[random.nextInt(skin.length)],
                     shirts[random.nextInt(shirts.length)],
-                    drink, 1f, random.nextFloat() * 6.28f);
+                    drink, 1f, random.nextFloat() * 6.28f, slot);
+            customer.entryX = (slot == 1) ? W + 78f : -78f;
+            customer.exitX = (slot == 1) ? -86f : W + 86f;
+            customer.x = customer.entryX;
+            customer.enterDelay = slot * 0.32f;
+            customer.state = C_ARRIVING;
+            return customer;
+        }
+
+        private float seatX(int slot) {
+            return 70f + slot * 125f;
+        }
+
+        private boolean customerCanOrder(Customer customer) {
+            return customer.state == C_WAITING || customer.state == C_ANGRY
+                    || customer.state == C_BANGING;
+        }
+
+        private boolean selectedCustomerCanOrder() {
+            return selectedCustomer >= 0 && selectedCustomer < customers.size()
+                    && customerCanOrder(customers.get(selectedCustomer));
         }
 
         @Override protected void onDraw(Canvas canvas) {
@@ -123,17 +149,87 @@ public final class MainActivity extends Activity {
         private void update(float dt, long now) {
             for (int i = 0; i < customers.size(); i++) {
                 Customer c = customers.get(i);
-                c.patience -= dt * (0.010f + served * 0.00012f);
-                c.bob = (float) Math.sin(sceneTime * 2.4f + c.phase) * 3f;
-                if (c.patience <= 0f) {
-                    customers.set(i, makeCustomer(i));
-                    if (i == selectedCustomer) {
-                        clearGlass();
-                        combo = 0;
-                        showMessage("Müşteri beklemekten vazgeçti!");
-                    }
+                c.bob = (float) Math.sin(sceneTime * 2.4f + c.phase) * 2.6f;
+                c.blink = (float) Math.max(0f, Math.sin(sceneTime * 1.7f + c.phase * 2f));
+
+                if (c.enterDelay > 0f) {
+                    c.enterDelay = Math.max(0f, c.enterDelay - dt);
+                    continue;
+                }
+
+                switch (c.state) {
+                    case C_ARRIVING:
+                        c.enterProgress = Math.min(1f, c.enterProgress + dt / 1.35f);
+                        float eased = c.enterProgress * c.enterProgress * (3f - 2f * c.enterProgress);
+                        c.x = c.entryX + (seatX(i) - c.entryX) * eased;
+                        if (c.enterProgress >= 1f) {
+                            c.state = C_WAITING;
+                            c.x = seatX(i);
+                        }
+                        break;
+
+                    case C_WAITING:
+                        c.patience = Math.max(0f, c.patience - dt * (0.047f + served * 0.00012f));
+                        if (c.patience <= 0.46f) {
+                            c.state = C_ANGRY;
+                            c.angerTimer = 0f;
+                        }
+                        break;
+
+                    case C_ANGRY:
+                        c.patience = Math.max(0f, c.patience - dt * 0.055f);
+                        c.angerTimer += dt;
+                        if (c.patience <= 0f || c.angerTimer >= 2.7f) {
+                            c.state = C_BANGING;
+                            c.angerTimer = 0f;
+                            c.bangHits = 0;
+                            if (i == selectedCustomer) {
+                                showMessage(c.name + " sabırsızlandı! Masaya vuruyor!");
+                            }
+                        }
+                        break;
+
+                    case C_BANGING:
+                        c.angerTimer += dt;
+                        c.bangPhase += dt * 15f;
+                        c.bangHits = (int) (c.angerTimer * 2.4f);
+                        if (c.angerTimer >= 7f) {
+                            c.state = C_LEAVING;
+                            c.leaveReason = true;
+                            if (i == selectedCustomer) {
+                                clearGlass();
+                                combo = 0;
+                                showMessage(c.name + " kızıp kafeden ayrıldı!");
+                            }
+                        }
+                        break;
+
+                    case C_DRINKING:
+                        c.drinkTime -= dt;
+                        c.sipPhase += dt * 4.2f;
+                        if (c.drinkTime <= 0f) {
+                            c.state = C_LEAVING;
+                            c.leaveReason = false;
+                            if (i == selectedCustomer) {
+                                showMessage(c.name + " içeceğini bitirdi. Güle güle!");
+                            }
+                        }
+                        break;
+
+                    case C_LEAVING:
+                        float direction = c.exitX > c.x ? 1f : -1f;
+                        c.x += direction * 205f * dt;
+                        c.walkPhase += dt * 11f;
+                        if ((direction > 0f && c.x >= c.exitX)
+                                || (direction < 0f && c.x <= c.exitX)) {
+                            boolean wasSelected = i == selectedCustomer;
+                            customers.set(i, makeCustomer(i));
+                            if (wasSelected) clearGlass();
+                        }
+                        break;
                 }
             }
+
             for (int i = particles.size() - 1; i >= 0; i--) {
                 FloatParticle f = particles.get(i);
                 f.x += f.vx * dt;
@@ -251,41 +347,135 @@ public final class MainActivity extends Activity {
                     android.graphics.Typeface.BOLD));
             t.setTextSize(11);
             t.setColor(Color.rgb(93, 104, 79));
-            c.drawText("MÜŞTERİLER", 195, 151, t);
+            c.drawText("MÜŞTERİLER • SİPARİŞ VERMEK İÇİN DOKUN", 195, 151, t);
 
             for (int i = 0; i < customers.size(); i++) {
                 Customer customer = customers.get(i);
-                float x = 70 + i * 125;
+                float x = customer.x;
                 float y = 220 + customer.bob;
                 boolean active = i == selectedCustomer;
+                boolean seated = customer.state == C_WAITING || customer.state == C_ANGRY
+                        || customer.state == C_BANGING || customer.state == C_DRINKING;
 
                 p.setColor(active ? Color.rgb(255, 250, 229) : Color.rgb(247, 232, 203));
                 round(c, x - 53, 163, x + 53, 311, 18);
                 if (active) {
                     p.setStyle(Paint.Style.STROKE);
                     p.setStrokeWidth(3);
-                    p.setColor(Color.rgb(255, 164, 94));
+                    p.setColor(customer.state == C_ANGRY || customer.state == C_BANGING
+                            ? Color.rgb(239, 105, 82) : Color.rgb(255, 164, 94));
                     round(c, x - 53, 163, x + 53, 311, 18);
                     p.setStyle(Paint.Style.FILL);
                 }
 
-                // Order bubble above each character.
-                p.setColor(Color.WHITE);
-                round(c, x - 42, 171, x + 42, 198, 11);
-                t.setTextSize(9);
-                t.setColor(Color.rgb(112, 100, 79));
-                c.drawText(drinkShort[customer.drink], x, 188, t);
-                drawCustomer(c, x, y, customer, i);
+                if (customer.state == C_WAITING || customer.state == C_ANGRY
+                        || customer.state == C_BANGING) {
+                    p.setColor(customer.state == C_BANGING
+                            ? Color.rgb(255, 224, 215) : Color.WHITE);
+                    round(c, x - 43, 171, x + 43, 198, 11);
+                    if (customer.state == C_BANGING) {
+                        t.setTextSize(9);
+                        t.setColor(Color.rgb(202, 68, 57));
+                        c.drawText("SİPARİŞİM!", x, 188, t);
+                    } else {
+                        t.setTextSize(9);
+                        t.setColor(Color.rgb(112, 100, 79));
+                        c.drawText(drinkShort[customer.drink], x, 188, t);
+                    }
+                } else if (customer.state == C_DRINKING) {
+                    p.setColor(Color.rgb(227, 249, 218));
+                    round(c, x - 34, 171, x + 34, 198, 11);
+                    t.setTextSize(10);
+                    t.setColor(Color.rgb(64, 146, 88));
+                    c.drawText("YUMM!", x, 188, t);
+                } else if (customer.state == C_ARRIVING) {
+                    t.setTextSize(9);
+                    t.setColor(Color.rgb(112, 100, 79));
+                    c.drawText("GELİYOR...", x, 188, t);
+                }
 
-                p.setColor(Color.rgb(225, 216, 190));
-                round(c, x - 36, 288, x + 36, 294, 3);
-                p.setColor(customer.patience > 0.35f
-                        ? Color.rgb(103, 191, 128) : Color.rgb(239, 116, 92));
-                round(c, x - 36, 288, x - 36 + 72 * clamp(customer.patience, 0, 1),
-                        294, 3);
-                t.setTextSize(9);
-                t.setColor(Color.rgb(116, 103, 79));
-                c.drawText(customer.name, x, 306, t);
+                if (customer.state != C_LEAVING) {
+                    drawCustomer(c, x, y, customer, i);
+                    drawCustomerTable(c, x, y, customer);
+                }
+
+                if (seated && customer.state != C_DRINKING) {
+                    p.setColor(Color.rgb(225, 216, 190));
+                    round(c, x - 36, 296, x + 36, 302, 3);
+                    p.setColor(customer.state == C_ANGRY || customer.state == C_BANGING
+                            ? Color.rgb(239, 103, 82)
+                            : (customer.patience > 0.35f
+                            ? Color.rgb(103, 191, 128) : Color.rgb(239, 116, 92)));
+                    round(c, x - 36, 296,
+                            x - 36 + 72 * clamp(customer.patience, 0, 1), 302, 3);
+                }
+                if (seated) {
+                    t.setTextSize(9);
+                    t.setColor(customer.state == C_BANGING
+                            ? Color.rgb(196, 69, 59) : Color.rgb(116, 103, 79));
+                    c.drawText(customer.name, x, 314, t);
+                }
+            }
+        }
+
+        private void drawCustomerTable(Canvas c, float x, float y, Customer customer) {
+            float hit = customer.state == C_BANGING
+                    ? 0.5f + 0.5f * (float) Math.sin(customer.bangPhase) : 0f;
+            float shake = customer.state == C_BANGING
+                    ? (float) Math.sin(customer.bangPhase * 1.03f) * 1.8f : 0f;
+            c.save();
+            c.translate(shake, hit * 1.8f);
+
+            p.setColor(Color.argb(65, 87, 57, 32));
+            c.drawOval(x - 40, y + 58, x + 40, y + 70, p);
+            p.setColor(Color.rgb(148, 91, 55));
+            c.drawRect(x - 31, y + 45, x - 26, y + 73, p);
+            c.drawRect(x + 26, y + 45, x + 31, y + 73, p);
+            p.setColor(Color.rgb(184, 112, 66));
+            round(c, x - 43, y + 39, x + 43, y + 51, 6);
+            p.setColor(Color.rgb(222, 151, 91));
+            round(c, x - 43, y + 38, x + 43, y + 44, 5);
+            p.setColor(Color.argb(70, 255, 236, 198));
+            c.drawLine(x - 32, y + 41, x + 30, y + 41, p);
+
+            p.setStrokeWidth(7f);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setColor(customer.skin);
+            if (customer.state == C_BANGING) {
+                float lift = hit * 13f;
+                c.drawLine(x - 19, y + 22, x - 24, y + 40 - lift, p);
+                c.drawLine(x + 19, y + 22, x + 24, y + 40 - lift, p);
+                c.drawCircle(x - 24, y + 40 - lift, 6f, p);
+                c.drawCircle(x + 24, y + 40 - lift, 6f, p);
+                p.setColor(Color.argb(110, 255, 245, 225));
+                c.drawCircle(x - 24, y + 45, 3 + hit * 3, p);
+                c.drawCircle(x + 24, y + 45, 3 + hit * 3, p);
+            } else if (customer.state == C_DRINKING) {
+                float sip = 1.5f * (float) Math.sin(customer.sipPhase);
+                c.drawLine(x + 20, y + 20, x + 28, y + 11 + sip, p);
+                p.setColor(Color.WHITE);
+                round(c, x + 23, y + 1 + sip, x + 35, y + 19 + sip, 4);
+                p.setColor(drinkColors[customer.drink]);
+                round(c, x + 24, y + 8 + sip, x + 34, y + 17 + sip, 3);
+                p.setColor(Color.rgb(79, 165, 111));
+                c.drawLine(x + 30, y + 2 + sip, x + 34, y - 7 + sip, p);
+            } else {
+                c.drawLine(x - 19, y + 22, x - 23, y + 41, p);
+                c.drawLine(x + 19, y + 22, x + 23, y + 41, p);
+                c.drawCircle(x - 23, y + 41, 5f, p);
+                c.drawCircle(x + 23, y + 41, 5f, p);
+            }
+            p.setStrokeCap(Paint.Cap.BUTT);
+            c.restore();
+
+            if (customer.state == C_BANGING) {
+                float pulse = (float) Math.sin(customer.bangPhase * 2f);
+                p.setColor(Color.rgb(255, 99, 78));
+                c.drawCircle(x + 37, y - 38, 8 + Math.max(0, pulse) * 2, p);
+                t.setTextAlign(Paint.Align.CENTER);
+                t.setTextSize(13);
+                t.setColor(Color.WHITE);
+                c.drawText("!", x + 37, y - 33, t);
             }
         }
 
@@ -317,18 +507,27 @@ public final class MainActivity extends Activity {
             hair.close();
             c.drawPath(hair, p);
 
-            // Eyes, cheeks, smile.
+            // Expressions change from cheerful to annoyed when service is late.
+            boolean angry = customer.state == C_ANGRY || customer.state == C_BANGING;
             p.setColor(Color.rgb(58, 51, 46));
             c.drawCircle(x - 9, y - 5, 2.2f, p);
             c.drawCircle(x + 9, y - 5, 2.2f, p);
-            p.setColor(Color.argb(80, 244, 107, 112));
+            p.setColor(Color.argb(angry ? 135 : 80, 244, 107, 112));
             c.drawCircle(x - 15, y + 5, 5, p);
             c.drawCircle(x + 15, y + 5, 5, p);
             p.setStyle(Paint.Style.STROKE);
-            p.setStrokeWidth(1.8f);
+            p.setStrokeWidth(2f);
             p.setStrokeCap(Paint.Cap.ROUND);
-            p.setColor(Color.rgb(126, 71, 60));
-            c.drawArc(x - 7, y + 1, x + 7, y + 14, 12, 155, false, p);
+            p.setColor(Color.rgb(82, 52, 45));
+            if (angry) {
+                c.drawLine(x - 14, y - 13, x - 5, y - 10, p);
+                c.drawLine(x + 5, y - 10, x + 14, y - 13, p);
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(Color.rgb(110, 52, 49));
+                c.drawOval(x - 5, y + 4, x + 5, y + 15, p);
+            } else {
+                c.drawArc(x - 7, y + 1, x + 7, y + 14, 12, 155, false, p);
+            }
             p.setStyle(Paint.Style.FILL);
             p.setStrokeCap(Paint.Cap.BUTT);
         }
@@ -339,15 +538,35 @@ public final class MainActivity extends Activity {
             p.setColor(Color.rgb(255, 252, 237));
             round(c, 21, 321, 369, 379, 14);
             Customer current = customers.get(selectedCustomer);
+            if (!customerCanOrder(current)) {
+                p.setColor(Color.rgb(236, 247, 224));
+                round(c, 31, 331, 83, 369, 10);
+                t.setTextAlign(Paint.Align.CENTER);
+                t.setTextSize(10);
+                t.setColor(Color.rgb(85, 139, 91));
+                String status = current.state == C_DRINKING ? "İÇİYOR" :
+                        (current.state == C_LEAVING ? "GİDİYOR" : "GELİYOR");
+                c.drawText(status, 57, 353, t);
+                t.setTextAlign(Paint.Align.LEFT);
+                t.setTextSize(10);
+                t.setColor(Color.rgb(150, 131, 99));
+                c.drawText("MÜŞTERİ DURUMU", 94, 342, t);
+                t.setTextSize(14);
+                t.setColor(Color.rgb(91, 93, 69));
+                c.drawText(current.name + " şu anda meşgul", 94, 361, t);
+                return;
+            }
             p.setColor(drinkColors[current.drink]);
             round(c, 31, 331, 83, 369, 10);
             drawDrinkIcon(c, 57, 350, current.drink, 14);
             t.setTextAlign(Paint.Align.LEFT);
             t.setTextSize(10);
             t.setColor(Color.rgb(150, 131, 99));
-            c.drawText("SİPARİŞ", 94, 342, t);
+            c.drawText(current.state == C_BANGING ? "SABIRSIZ MÜŞTERİ" :
+                    (current.state == C_ANGRY ? "MÜŞTERİ BEKLİYOR" : "SİPARİŞ"), 94, 342, t);
             t.setTextSize(15);
-            t.setColor(Color.rgb(91, 93, 69));
+            t.setColor(current.state == C_BANGING ? Color.rgb(201, 68, 57) :
+                    Color.rgb(91, 93, 69));
             c.drawText(drinkNames[current.drink], 94, 361, t);
             t.setTextSize(10);
             t.setColor(Color.rgb(137, 125, 101));
@@ -521,8 +740,9 @@ public final class MainActivity extends Activity {
         }
 
         private void drawActions(Canvas c) {
-            boolean canMix = glassIngredients.length == 3 && !mixed;
-            boolean canServe = mixed;
+            boolean available = selectedCustomerCanOrder();
+            boolean canMix = available && glassIngredients.length == 3 && !mixed;
+            boolean canServe = available && mixed;
             p.setColor(canMix ? Color.rgb(104, 175, 143) : Color.rgb(178, 190, 161));
             round(c, 21, 808, 185, 839, 15);
             p.setColor(canServe ? Color.rgb(242, 131, 105) : Color.rgb(196, 174, 142));
@@ -638,17 +858,30 @@ public final class MainActivity extends Activity {
         private void tap(float x, float y) {
             if (y >= 163 && y <= 311) {
                 for (int i = 0; i < customers.size(); i++) {
-                    float cx = 70 + i * 125;
+                    float cx = customers.get(i).x;
                     if (Math.abs(x - cx) < 54) {
+                        Customer chosen = customers.get(i);
+                        if (!customerCanOrder(chosen)) {
+                            showMessage(chosen.state == C_DRINKING
+                                    ? "Müşteri içeceğini keyifle içiyor."
+                                    : "Müşteri henüz masasına oturmadı.");
+                            return;
+                        }
                         selectedCustomer = i;
                         clearGlass();
-                        showMessage(customers.get(i).name + " siparişini hazırlıyoruz!");
+                        showMessage(chosen.state == C_BANGING
+                                ? chosen.name + " çok sinirli! Siparişini yetiştir."
+                                : chosen.name + " siparişini hazırlıyoruz!");
                         return;
                     }
                 }
             }
 
             if (y >= 672 && y <= 793) {
+                if (!selectedCustomerCanOrder()) {
+                    showMessage("Önce masaya oturmuş bir müşteriyi seç!");
+                    return;
+                }
                 float[] xs = {18, 115, 212, 309};
                 float[] ys = {672, 738};
                 for (int i = 0; i < ingredientNames.length; i++) {
@@ -675,6 +908,10 @@ public final class MainActivity extends Activity {
             }
 
             if (y >= 808 && y <= 844) {
+                if (!selectedCustomerCanOrder()) {
+                    showMessage("Bu müşteri şu anda sipariş alamıyor.");
+                    return;
+                }
                 if (x < 195) {
                     if (glassIngredients.length != 3) {
                         showMessage("Önce 3 malzeme seç!");
@@ -693,14 +930,17 @@ public final class MainActivity extends Activity {
                     } else {
                         Customer c = customers.get(selectedCustomer);
                         int reward = 12 + level * 2 + Math.min(combo, 5) * 2;
+                        if (c.state == C_ANGRY || c.state == C_BANGING) reward = Math.max(5, reward - 4);
                         coins += reward;
                         served++;
                         combo++;
                         addParticles(195, 490, drinkColors[c.drink], 32);
-                        customers.set(selectedCustomer, makeCustomer(selectedCustomer));
+                        c.state = C_DRINKING;
+                        c.drinkTime = 3.8f;
+                        c.sipPhase = 0f;
                         clearGlass();
                         if (served % 5 == 0) level++;
-                        showMessage("Sipariş teslim edildi! +" + reward + " coin");
+                        showMessage(c.name + " içeceğini aldı ve içmeye başladı! +" + reward + " coin");
                     }
                 }
             }
@@ -719,13 +959,26 @@ public final class MainActivity extends Activity {
 
         private final class Customer {
             final String name;
-            final int skin, shirt, drink;
+            final int skin, shirt, drink, slot;
             final float phase;
             float patience;
             float bob;
-            Customer(String name, int skin, int shirt, int drink, float patience, float phase) {
-                this.name = name; this.skin = skin; this.shirt = shirt;
-                this.drink = drink; this.patience = patience; this.phase = phase;
+            float x, entryX, exitX;
+            float enterDelay, enterProgress;
+            float angerTimer, bangPhase, drinkTime, sipPhase, walkPhase, blink;
+            int state = C_ARRIVING;
+            int bangHits;
+            boolean leaveReason;
+
+            Customer(String name, int skin, int shirt, int drink,
+                     float patience, float phase, int slot) {
+                this.name = name;
+                this.skin = skin;
+                this.shirt = shirt;
+                this.drink = drink;
+                this.patience = patience;
+                this.phase = phase;
+                this.slot = slot;
             }
         }
 

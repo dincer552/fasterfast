@@ -9,7 +9,8 @@ Android için renkli, animasyonlu bir sahil kafesi işletme oyunu.
 
 ## Oynanış
 
-- Sahil kafesine farklı karakterlerde müşteriler gelir; her müşterinin ayrı içecek siparişi ve sabır göstergesi vardır.
+- Sahil kafesine farklı karakterlerde müşteriler yürüyerek gelir, masalarına oturur ve içecek siparişi verir. Servis sonrası içeceklerini animasyonla içer, masadan kalkıp yürüyerek gider; yerlerine yeni müşteriler gelir.
+- Sipariş gecikince müşteriler önce huzursuzlanıp kızar, ardından masaya yumruklarıyla vurmaya başlar. Sabırları tamamen tükenirse siparişi iptal edip kafeden ayrılırlar.
 - Müşteriye dokunarak siparişini seç.
 - Malzemeleri dokunarak bardağa ekle: buz, limon, çilek, kahve, süt, nane ve portakal.
 - Dört tarif bulunur: limonata, çilek fizz, buzlu kahve ve tropik içecek.
