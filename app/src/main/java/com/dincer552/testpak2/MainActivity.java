@@ -67,6 +67,10 @@ public final class MainActivity extends Activity {
         private int combo = 0;
         private int[] glassIngredients = new int[0];
         private boolean mixed = false;
+        private int recipeStep = 0;
+        private int quality = 100;
+        private int qualityMistakes = 0;
+        private static final int MINIMUM_PAID_QUALITY = 60;
         private String message = "Hoş geldin! İlk siparişini hazırla.";
         private long messageUntil = System.currentTimeMillis() + 3500L;
         private long lastFrame = System.currentTimeMillis();
@@ -177,14 +181,21 @@ public final class MainActivity extends Activity {
                         break;
 
                     case C_ANGRY:
-                        c.patience = Math.max(0f, c.patience - dt * 0.055f);
                         c.angerTimer += dt;
-                        if (c.patience <= 0f || c.angerTimer >= 2.7f) {
-                            c.state = C_BANGING;
-                            c.angerTimer = 0f;
-                            c.bangHits = 0;
-                            if (i == selectedCustomer) {
-                                showMessage(c.name + " sabırsızlandı! Masaya vuruyor!");
+                        if (c.rejecting) {
+                            if (c.angerTimer >= 1.6f) {
+                                c.state = C_LEAVING;
+                                c.leaveReason = true;
+                            }
+                        } else {
+                            c.patience = Math.max(0f, c.patience - dt * 0.055f);
+                            if (c.patience <= 0f || c.angerTimer >= 2.7f) {
+                                c.state = C_BANGING;
+                                c.angerTimer = 0f;
+                                c.bangHits = 0;
+                                if (i == selectedCustomer) {
+                                    showMessage(c.name + " sabırsızlandı! Masaya vuruyor!");
+                                }
                             }
                         }
                         break;
@@ -685,7 +696,8 @@ public final class MainActivity extends Activity {
             t.setTextAlign(Paint.Align.CENTER);
             t.setTextSize(10);
             t.setColor(Color.rgb(255, 250, 228));
-            String status = mixed ? "HAZIR!" : glassIngredients.length + "/3 MALZEME";
+            String status = mixed ? "HAZIR! KALİTE " + quality + "%"
+                    : glassIngredients.length + "/3 MALZEME";
             c.drawText(status, gx, gy + 111, t);
 
             // Ingredient slots.
@@ -706,42 +718,111 @@ public final class MainActivity extends Activity {
 
         private void drawIngredients(Canvas c) {
             t.setTextAlign(Paint.Align.LEFT);
-            t.setTextSize(12);
+            t.setTextSize(11);
             t.setTypeface(android.graphics.Typeface.create("sans-serif-rounded",
                     android.graphics.Typeface.BOLD));
             t.setColor(Color.rgb(103, 106, 76));
-            c.drawText("MALZEMELER", 19, 658, t);
-            t.setTextAlign(Paint.Align.RIGHT);
-            t.setTextSize(9);
-            t.setColor(Color.rgb(143, 125, 94));
-            c.drawText("Eklemek için dokun", 370, 658, t);
+            c.drawText("RAF", 20, 651, t);
 
-            float[] xs = {18, 115, 212, 309};
-            float[] ys = {672, 738};
+            float[] xs = {18, 108};
+            float[] ys = {660, 695, 730, 765};
             for (int i = 0; i < ingredientNames.length; i++) {
-                int col = i % 4;
-                int row = i / 4;
-                float x = xs[col], y = ys[row];
-                p.setColor(Color.argb(35, 104, 79, 48));
-                round(c, x, y + 3, x + 62, y + 58, 13);
-                p.setColor(Color.rgb(255, 251, 236));
-                round(c, x, y, x + 62, y + 55, 13);
+                float x = xs[i % 2], y = ys[i / 2];
+                boolean next = selectedCustomerCanOrder() && !mixed
+                        && recipeStep < 3
+                        && recipes[customers.get(selectedCustomer).drink][recipeStep] == i;
+                p.setColor(next ? Color.rgb(224, 245, 211) : Color.rgb(255, 251, 236));
+                round(c, x, y, x + 82, y + 30, 8);
+                if (next) {
+                    p.setStyle(Paint.Style.STROKE);
+                    p.setStrokeWidth(1.6f);
+                    p.setColor(Color.rgb(93, 170, 105));
+                    round(c, x, y, x + 82, y + 30, 8);
+                    p.setStyle(Paint.Style.FILL);
+                }
                 p.setColor(ingredientColors[i]);
-                c.drawCircle(x + 31, y + 19, 11, p);
+                c.drawCircle(x + 13, y + 15, 8, p);
                 p.setColor(Color.argb(65, 75, 65, 45));
-                c.drawCircle(x + 34, y + 22, 4, p);
-                t.setTextAlign(Paint.Align.CENTER);
-                t.setTextSize(8.5f);
+                c.drawCircle(x + 15, y + 17, 3, p);
+                t.setTextAlign(Paint.Align.LEFT);
+                t.setTextSize(8f);
                 t.setTypeface(android.graphics.Typeface.create("sans-serif-rounded",
                         android.graphics.Typeface.BOLD));
-                t.setColor(Color.rgb(112, 105, 83));
-                c.drawText(ingredientNames[i], x + 31, y + 45, t);
+                t.setColor(Color.rgb(92, 91, 73));
+                c.drawText(ingredientNames[i], x + 25, y + 18, t);
+                if (next) {
+                    t.setTextAlign(Paint.Align.RIGHT);
+                    t.setTextSize(9);
+                    t.setColor(Color.rgb(65, 145, 83));
+                    c.drawText("✓", x + 77, y + 19, t);
+                }
             }
+            drawRecipePanel(c);
+        }
+
+        private void drawRecipePanel(Canvas c) {
+            float left = 202f;
+            p.setColor(Color.argb(55, 83, 65, 44));
+            round(c, left, 642, 377, 800, 13);
+            p.setColor(Color.rgb(255, 249, 229));
+            round(c, left, 639, 377, 797, 13);
+            t.setTextAlign(Paint.Align.LEFT);
+            t.setTypeface(android.graphics.Typeface.create("sans-serif-rounded",
+                    android.graphics.Typeface.BOLD));
+            t.setTextSize(10);
+            t.setColor(Color.rgb(91, 104, 73));
+            c.drawText("HAZIRLAMA SIRASI", left + 9, 655, t);
+
+            boolean active = selectedCustomerCanOrder();
+            int drink = active ? customers.get(selectedCustomer).drink : -1;
+            for (int step = 0; step < 4; step++) {
+                float y = 663 + step * 27;
+                boolean done = active && (step < recipeStep || (step == 3 && mixed));
+                boolean current = active && !mixed && step == recipeStep;
+                p.setColor(done ? Color.rgb(219, 242, 213)
+                        : (current ? Color.rgb(255, 229, 174) : Color.rgb(244, 238, 218)));
+                round(c, left + 8, y, 369, y + 23, 7);
+                p.setColor(done ? Color.rgb(82, 159, 91)
+                        : (current ? Color.rgb(211, 143, 48) : Color.rgb(177, 165, 137)));
+                c.drawCircle(left + 19, y + 11.5f, 7, p);
+                t.setTextAlign(Paint.Align.CENTER);
+                t.setTextSize(8);
+                t.setColor(Color.WHITE);
+                c.drawText(done ? "✓" : String.valueOf(step + 1), left + 19, y + 14, t);
+                t.setTextAlign(Paint.Align.LEFT);
+                t.setTextSize(8.2f);
+                t.setColor(Color.rgb(91, 87, 68));
+                String label = step < 3
+                        ? (drink >= 0 ? ingredientNames[recipes[drink][step]] : "—")
+                        : "KARIŞTIR";
+                c.drawText(label, left + 32, y + 15, t);
+                if (current) {
+                    t.setTextAlign(Paint.Align.RIGHT);
+                    t.setTextSize(7);
+                    t.setColor(Color.rgb(177, 113, 37));
+                    c.drawText("ŞİMDİ", 361, y + 14, t);
+                }
+            }
+
+            t.setTextAlign(Paint.Align.LEFT);
+            t.setTextSize(8);
+            t.setColor(Color.rgb(112, 102, 78));
+            c.drawText("KALİTE", left + 9, 781, t);
+            p.setColor(Color.rgb(225, 216, 190));
+            round(c, left + 48, 773, 361, 783, 5);
+            int qualityColor = quality >= MINIMUM_PAID_QUALITY
+                    ? Color.rgb(92, 176, 111) : Color.rgb(229, 91, 76);
+            p.setColor(qualityColor);
+            round(c, left + 48, 773, left + 48 + (159 * quality / 100f), 783, 5);
+            t.setTextAlign(Paint.Align.RIGHT);
+            t.setTextSize(8);
+            t.setColor(qualityColor);
+            c.drawText(quality + "%", 367, 793, t);
         }
 
         private void drawActions(Canvas c) {
             boolean available = selectedCustomerCanOrder();
-            boolean canMix = available && glassIngredients.length == 3 && !mixed;
+            boolean canMix = available && recipeStep == 3 && !mixed;
             boolean canServe = available && mixed;
             p.setColor(canMix ? Color.rgb(104, 175, 143) : Color.rgb(178, 190, 161));
             round(c, 21, 808, 185, 839, 15);
@@ -823,6 +904,9 @@ public final class MainActivity extends Activity {
         private void clearGlass() {
             glassIngredients = new int[0];
             mixed = false;
+            recipeStep = 0;
+            quality = 100;
+            qualityMistakes = 0;
         }
 
         private void showMessage(String value) {
@@ -830,16 +914,10 @@ public final class MainActivity extends Activity {
             messageUntil = System.currentTimeMillis() + 2100L;
         }
 
-        private boolean recipeMatches(int drink) {
-            if (glassIngredients.length != 3) return false;
-            int[] expected = new int[ingredientNames.length];
-            int[] actual = new int[ingredientNames.length];
-            for (int value : recipes[drink]) expected[value]++;
-            for (int value : glassIngredients) actual[value]++;
-            for (int i = 0; i < expected.length; i++) {
-                if (expected[i] != actual[i]) return false;
-            }
-            return true;
+        private void recordWrongStep(String reason) {
+            quality = Math.max(0, quality - 22);
+            qualityMistakes++;
+            showMessage(reason + " Kalite -" + 22 + "%");
         }
 
         private void addParticles(float x, float y, int color, int count) {
@@ -877,31 +955,37 @@ public final class MainActivity extends Activity {
                 }
             }
 
-            if (y >= 672 && y <= 793) {
+            if (y >= 656 && y <= 798) {
                 if (!selectedCustomerCanOrder()) {
                     showMessage("Önce masaya oturmuş bir müşteriyi seç!");
                     return;
                 }
-                float[] xs = {18, 115, 212, 309};
-                float[] ys = {672, 738};
+                float[] xs = {18, 108};
+                float[] ys = {660, 695, 730, 765};
                 for (int i = 0; i < ingredientNames.length; i++) {
-                    float bx = xs[i % 4], by = ys[i / 4];
-                    if (x >= bx && x <= bx + 62 && y >= by && y <= by + 55) {
+                    float bx = xs[i % 2], by = ys[i / 2];
+                    if (x >= bx && x <= bx + 82 && y >= by && y <= by + 30) {
                         if (mixed) {
                             showMessage("Yeni içecek için bardağı temizle!");
                             return;
                         }
-                        if (glassIngredients.length >= 3) {
-                            showMessage("Bardak doldu. Karıştırabilirsin.");
+                        if (recipeStep >= 3) {
+                            showMessage("Malzemeler tamam. Şimdi KARIŞTIR!");
+                            return;
+                        }
+                        int expected = recipes[customers.get(selectedCustomer).drink][recipeStep];
+                        if (i != expected) {
+                            recordWrongStep("Yanlış ürün! Sıradaki: " + ingredientNames[expected] + ".");
                             return;
                         }
                         int[] next = new int[glassIngredients.length + 1];
                         System.arraycopy(glassIngredients, 0, next, 0, glassIngredients.length);
                         next[next.length - 1] = i;
                         glassIngredients = next;
+                        recipeStep++;
                         addParticles(195 + random.nextInt(35) - 17,
                                 535 + random.nextInt(30), ingredientColors[i], 5);
-                        showMessage(ingredientNames[i] + " eklendi");
+                        showMessage(ingredientNames[i] + " doğru sırada eklendi!");
                         return;
                     }
                 }
@@ -913,34 +997,43 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 if (x < 195) {
-                    if (glassIngredients.length != 3) {
-                        showMessage("Önce 3 malzeme seç!");
-                    } else if (recipeMatches(customers.get(selectedCustomer).drink)) {
+                    if (recipeStep < 3) {
+                        quality = Math.max(0, quality - 15);
+                        qualityMistakes++;
+                        int expected = recipes[customers.get(selectedCustomer).drink][recipeStep];
+                        showMessage("Önce " + ingredientNames[expected] + " eklemelisin! Kalite -15%");
+                    } else if (!mixed) {
                         mixed = true;
                         addParticles(195, 520, Color.rgb(255, 248, 203), 24);
-                        showMessage("Harika! İçecek tam kıvamında.");
-                    } else {
-                        combo = 0;
-                        clearGlass();
-                        showMessage("Tarif tutmadı. Tekrar deneyelim!");
+                        showMessage("Doğru işlem! İçecek karıştırıldı. Kalite " + quality + "%");
                     }
                 } else {
                     if (!mixed) {
-                        showMessage("Önce doğru tarifi karıştır!");
+                        showMessage("Önce tarifteki sırayı tamamla ve karıştır!");
                     } else {
                         Customer c = customers.get(selectedCustomer);
-                        int reward = 12 + level * 2 + Math.min(combo, 5) * 2;
-                        if (c.state == C_ANGRY || c.state == C_BANGING) reward = Math.max(5, reward - 4);
-                        coins += reward;
-                        served++;
-                        combo++;
-                        addParticles(195, 490, drinkColors[c.drink], 32);
-                        c.state = C_DRINKING;
-                        c.drinkTime = 3.8f;
-                        c.sipPhase = 0f;
-                        clearGlass();
-                        if (served % 5 == 0) level++;
-                        showMessage(c.name + " içeceğini aldı ve içmeye başladı! +" + reward + " coin");
+                        if (quality < MINIMUM_PAID_QUALITY) {
+                            combo = 0;
+                            c.state = C_ANGRY;
+                            c.rejecting = true;
+                            c.angerTimer = 0f;
+                            clearGlass();
+                            showMessage(c.name + " içeceği beğenmedi! Kalite düşük, para ödemiyor!");
+                        } else {
+                            int baseReward = 12 + level * 2 + Math.min(combo, 5) * 2;
+                            int reward = Math.max(1, Math.round(baseReward * quality / 100f));
+                            if (c.state == C_ANGRY || c.state == C_BANGING) reward = Math.max(1, reward - 4);
+                            coins += reward;
+                            served++;
+                            combo++;
+                            addParticles(195, 490, drinkColors[c.drink], 32);
+                            c.state = C_DRINKING;
+                            c.drinkTime = 3.8f;
+                            c.sipPhase = 0f;
+                            clearGlass();
+                            if (served % 5 == 0) level++;
+                            showMessage(c.name + " beğendi! Kaliteye göre +" + reward + " coin");
+                        }
                     }
                 }
             }
@@ -969,6 +1062,7 @@ public final class MainActivity extends Activity {
             int state = C_ARRIVING;
             int bangHits;
             boolean leaveReason;
+            boolean rejecting;
 
             Customer(String name, int skin, int shirt, int drink,
                      float patience, float phase, int slot) {

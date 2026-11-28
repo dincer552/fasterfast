@@ -14,7 +14,9 @@ Android için renkli, animasyonlu bir sahil kafesi işletme oyunu.
 - Müşteriye dokunarak siparişini seç.
 - Malzemeleri dokunarak bardağa ekle: buz, limon, çilek, kahve, süt, nane ve portakal.
 - Dört tarif bulunur: limonata, çilek fizz, buzlu kahve ve tropik içecek.
-- Üç malzemeyi doğru tarifte birleştirip **Karıştır** düğmesine bas; ardından **Müşteriye Ver** ile siparişi teslim et.
+- Sağdaki **Hazırlama Sırası** paneli her içeceğin malzemelerini hangi sırayla eklemen gerektiğini ve son işlem olarak karıştırmayı gösterir. Soldaki raftan doğru ürüne sırayla dokun.
+- Yanlış malzeme veya erken karıştırma kalite puanını düşürür. Kalite %60'ın altındaysa müşteri içeceği beğenmez, kızıp para ödemeden gider.
+- Kalite %60 ve üzerindeyse müşteri öder; kazanılan coin içeceğin kalite yüzdesine göre hesaplanır. Kusursuz hazırlama en yüksek kazancı sağlar.
 - Doğru siparişler coin kazandırır, seri servis bonusu verir ve her beş teslimatta seviye yükselir.
 - Müşteriler beklerken sabırları azalır; siparişleri zamanında hazırlamak gerekir.
 - Karakterler, deniz, palmiye, kafe tezgâhı, içecekler ve malzeme ekleme efektleri hareketlidir.
