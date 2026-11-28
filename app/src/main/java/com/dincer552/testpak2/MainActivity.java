@@ -151,6 +151,7 @@ public final class MainActivity extends Activity {
             drawOrderTicket(canvas);
             drawCounter(canvas);
             drawGlass(canvas);
+            drawSelectedRecipe(canvas);
             drawIngredients(canvas);
             drawActions(canvas);
             drawParticles(canvas);
@@ -687,6 +688,29 @@ public final class MainActivity extends Activity {
                     t.setColor(Color.argb(160, 255, 250, 231));
                     c.drawText(String.valueOf(i + 1), x + 18, 610, t);
                 }
+            }
+        }
+
+        private void drawSelectedRecipe(Canvas c) {
+            p.setColor(Color.argb(65,83,65,44));round(c,12,625,378,649,8);
+            p.setColor(Color.rgb(255,248,225));round(c,12,623,378,647,8);
+            if(!selectedCustomerCanOrder()){
+                t.setTextAlign(Paint.Align.CENTER);t.setTextSize(9);t.setColor(Color.rgb(116,105,80));
+                c.drawText("TARİFİ GÖRMEK İÇİN MÜŞTERİ SİPARİŞİNİ SEÇ",195,639,t);return;
+            }
+            int[] recipe=recipes[customers.get(selectedCustomer).drink];
+            float chipW=48f;
+            for(int i=0;i<recipe.length+1;i++){
+                float x=15+i*51f;
+                boolean done=i<recipeStep||(i==recipe.length&&mixed);
+                boolean current=i==recipeStep&&!mixed;
+                p.setColor(done?Color.rgb(218,241,211):(current?Color.rgb(255,222,164):Color.rgb(239,232,211)));
+                round(c,x,627,x+chipW,643,5);
+                t.setTextAlign(Paint.Align.CENTER);t.setTextSize(6.8f);
+                t.setColor(done?Color.rgb(66,137,79):(current?Color.rgb(137,88,34):Color.rgb(104,98,78)));
+                String label=i<recipe.length?ingredientNames[recipe[i]]:"KARIŞTIR";
+                if(label.length()>9)label=label.substring(0,9);
+                c.drawText(label,x+chipW/2,638,t);
             }
         }
 

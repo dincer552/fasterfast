@@ -9,17 +9,11 @@ Android için renkli, animasyonlu bir sahil kafesi işletme oyunu.
 
 ## Oynanış
 
-- Sahil kafesine farklı karakterlerde müşteriler yürüyerek gelir, masalarına oturur ve içecek siparişi verir. Servis sonrası içeceklerini animasyonla içer, masadan kalkıp yürüyerek gider; yerlerine yeni müşteriler gelir.
-- Sipariş gecikince müşteriler önce huzursuzlanıp kızar, ardından masaya yumruklarıyla vurmaya başlar. Sabırları tamamen tükenirse siparişi iptal edip kafeden ayrılırlar.
+- Sahil kafesine farklı karakterlerde müşteriler gelir; her müşterinin ayrı içecek siparişi ve sabır göstergesi vardır.
 - Müşteriye dokunarak siparişini seç.
-- 12 farklı içecek ve 12 ayrı tarif bulunur. Her tarifte 3–6 malzeme belirli sırayla eklenir; içeceklerin renkleri, satış fiyatları ve sunum bardakları farklıdır.
-- 20 çeşit malzeme bulunur. Üstteki **Müşteri Talepleri** panelinde siparişler listelenir; müşteri gidince veya servis alınca talebi listeden kalkar.
-- Her malzeme kullanıldığında stoktan bir adet düşer. Raf kartındaki **+** alanından oyun parasıyla 10 adetlik stok paketi alınabilir. Başlangıçta $4.000 ve her malzemeden 40 adet stok bulunur.
-- İşletme puanı 5.00 yıldızla başlar; müşteri memnuniyetine göre küsuratlı olarak artar veya azalır. Puan 2.00 altına inerse kafe kapanır.
-- Her içeceğin satış fiyatı farklıdır; müşterinin ödediği tutar hazırlama kalitesine göre hesaplanır.
-- Sağdaki **Hazırlama Sırası** paneli her içeceğin malzemelerini hangi sırayla eklemen gerektiğini ve son işlem olarak karıştırmayı gösterir. Soldaki raftan doğru ürüne sırayla dokun.
-- Yanlış malzeme veya erken karıştırma kalite puanını düşürür. Kalite %60'ın altındaysa müşteri içeceği beğenmez, kızıp para ödemeden gider.
-- Kalite %60 ve üzerindeyse müşteri öder; kazanılan coin içeceğin kalite yüzdesine göre hesaplanır. Kusursuz hazırlama en yüksek kazancı sağlar.
+- Malzemeleri dokunarak bardağa ekle: buz, limon, çilek, kahve, süt, nane ve portakal.
+- Dört tarif bulunur: limonata, çilek fizz, buzlu kahve ve tropik içecek.
+- Üç malzemeyi doğru tarifte birleştirip **Karıştır** düğmesine bas; ardından **Müşteriye Ver** ile siparişi teslim et.
 - Doğru siparişler coin kazandırır, seri servis bonusu verir ve her beş teslimatta seviye yükselir.
 - Müşteriler beklerken sabırları azalır; siparişleri zamanında hazırlamak gerekir.
 - Karakterler, deniz, palmiye, kafe tezgâhı, içecekler ve malzeme ekleme efektleri hareketlidir.
