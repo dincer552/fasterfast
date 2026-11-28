@@ -119,7 +119,7 @@ public final class MainActivity extends Activity {
         }
 
         private boolean customerCanOrder(Customer customer) {
-            return customer.state == C_WAITING || customer.state == C_ANGRY
+            return customer.state == C_WAITING || (customer.state == C_ANGRY && !customer.rejecting)
                     || customer.state == C_BANGING;
         }
 
@@ -675,18 +675,19 @@ public final class MainActivity extends Activity {
                     : glassIngredients.length + "/" + (selectedCustomerCanOrder()?recipes[customers.get(selectedCustomer).drink].length:0) + " MALZEME";
             c.drawText(status, gx, gy + 111, t);
 
-            // Ingredient slots.
-            for (int i = 0; i < 3; i++) {
-                float x = 151 + i * 44;
+            // Six ingredient slots for recipes with up to six components.
+            for (int i = 0; i < 6; i++) {
+                float x = 99 + i * 32;
                 p.setColor(Color.argb(100, 255, 248, 226));
-                round(c, x, 593, x + 37, 620, 8);
+                round(c, x, 593, x + 28, 620, 7);
                 if (i < glassIngredients.length) {
                     p.setColor(ingredientColors[glassIngredients[i]]);
-                    c.drawCircle(x + 18, 606, 9, p);
+                    c.drawCircle(x + 14, 606, 8, p);
                 } else {
-                    t.setTextSize(10);
+                    t.setTextAlign(Paint.Align.CENTER);
+                    t.setTextSize(9);
                     t.setColor(Color.argb(160, 255, 250, 231));
-                    c.drawText(String.valueOf(i + 1), x + 18, 610, t);
+                    c.drawText(String.valueOf(i + 1), x + 14, 610, t);
                 }
             }
         }
